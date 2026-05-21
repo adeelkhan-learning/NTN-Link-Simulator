@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3GPP 5G-NR NTN Link Emulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v8.2.0/ol.css">
+    <script src="https://cdn.jsdelivr.net/npm/ol@v8.2.0/dist/ol.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; background-color: #0f172a; color: #f8fafc; font-family: sans-serif; overflow: hidden; }
+        .ol-attribution { display: none !important; } 
+        .ol-zoom { top: 1rem !important; right: 1rem !important; left: auto !important; background-color: rgba(15, 23, 42, 0.85) !important; padding: 6px !important; border-radius: 8px !important; border: 1px solid #334155 !important; }
+        .ol-zoom button { background-color: #0f172a !important; color: #38bdf8 !important; font-weight: bold !important; border-radius: 4px !important; margin: 2px !important; border: 1px solid #1e293b !important; height: 28px !important; width: 28px !important; cursor: pointer; }
+        .ol-zoom button:hover { background-color: #38bdf8 !important; color: #0f172a !important; }
+    </style>
+</head>
+<body class="flex flex-col h-screen">
+
+    <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex justify-between items-center shrink-0">
+        <div>
+            <h1 class="text-xl font-bold text-sky-400 tracking-wide">3GPP 5G-NR NTN Link Emulator</h1>
+            <p class="text-xs text-slate-400 mt-0.5">Real-Time LEO Orbit Propagation, Pass Tracking & RF Metrics Planner</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="bg-slate-800 text-xs text-slate-300 font-mono px-3 py-1.5 rounded border border-slate-700">
+                Simulation Time: <span id="sim-clock" class="text-sky-400 font-bold">00m 00s</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden min-h-0">
+        
+        <aside class="w-80 bg-slate-900/95 border-r border-slate-800 p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+            
+            <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+                <label class="block text-xs font-semibold text-sky-400 uppercase tracking-wider mb-2">1. Satellite Configuration</label>
+                <select id="sat-preset" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-sky-500">
+                    <option value="starlink">Starlink DTC Shell (53° Inc, 550km)</option>
+                    <option value="oneweb">OneWeb Polar Shell (87° Inc, 1200km)</option>
+                    <option value="equatorial">Equatorial Testbed Plane (0° Inc, 600km)</option>
+                </select>
+            </div>
+
+            <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="block text-xs font-semibold text-sky-400 uppercase tracking-wider">2. Ground UE Coordinates</label>
+                    <span class="text-[10px] bg-sky-950 text-sky-400 border border-sky-800 px-1.5 py-0.5 rounded">Click Map to Move</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-xs mb-3">
+                    <div>
+                        <span class="text-slate-400 block mb-1">Latitude (°)</span>
+                        <input id="ue-lat" type="number" step="0.0001" value="23.5880" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 font-mono">
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block mb-1">Longitude (°)</span>
+                        <input id="ue-lon" type="number" step="0.0001" value="58.3829" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 font-mono">
+                    </div>
+                </div>
+                <div class="text-xs">
+                    <span class="text-slate-400 block mb-1">Elevation Mask Angle (θ min): <span id="mask-val" class="text-sky-400 font-bold">10°</span></span>
+                    <input id="ue-mask" type="range" min="0" max="45" value="10" class="w-full accent-sky-500">
+                </div>
+            </div>
+
+            <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+                <label class="block text-xs font-semibold text-sky-400 uppercase tracking-wider mb-2">3. 3GPP NTN Operating Band</label>
+                <select id="ntn-band" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-sky-500">
+                    <option value="1.542" selected>FR1: Band n255 (L-Band DL @ 1.54 GHz)</option>
+                    <option value="2.185">FR1: Band n256 (S-Band DL @ 2.18 GHz)</option>
+                    <option value="19.0">FR2: Band n510 (Ka-Band DL @ 19.0 GHz)</option>
+                    <option value="28.5">FR2: Band n511 (Ka-Band UL @ 28.5 GHz)</option>
+                </select>
+            </div>
+
+            <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800 flex flex-col gap-2">
+                <label class="block text-xs font-semibold text-sky-400 uppercase tracking-wider">4. Animation Controls</label>
+                <div class="flex gap-2">
+                    <button id="btn-play" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase py-2 rounded transition cursor-pointer">Run Live</button>
+                    <button id="btn-pause" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold uppercase py-2 rounded transition cursor-pointer">Pause</button>
+                </div>
+                <button id="btn-reset" class="w-full bg-rose-950 hover:bg-rose-900 border border-rose-800/60 text-rose-300 text-xs font-bold uppercase py-1.5 rounded transition cursor-pointer">Reset Timeline</button>
+            </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col min-w-0">
+            
+            <div class="flex-1 relative min-h-0">
+                <div id="mapContainer" class="absolute inset-0 w-full h-full"></div>
+                
+                <div class="absolute top-4 left-4 z-10 bg-slate-950/95 border border-slate-800 rounded-lg p-3 w-72 text-xs flex flex-col gap-2 pointer-events-none backdrop-blur shadow-xl">
+                    <div class="text-sky-400 font-bold tracking-wider border-b border-slate-800 pb-1 mb-1 uppercase">Live Visibility Metrics</div>
+                    <div class="flex justify-between font-mono"><span>LOS Status:</span><span id="hud-status" class="font-bold text-amber-500">INITIALIZING</span></div>
+                    <div class="flex justify-between font-mono"><span>Elevation Angle:</span><span id="hud-el">--°</span></div>
+                    <div class="flex justify-between font-mono"><span>Azimuth Angle:</span><span id="hud-az">--°</span></div>
+                    <div class="flex justify-between font-mono"><span>Slant Range:</span><span id="hud-range">-- km</span></div>
+                    <div class="flex justify-between font-mono"><span>Propagation Delay:</span><span id="hud-delay" class="text-amber-400">-- ms</span></div>
+                    <div class="flex justify-between font-mono"><span>Doppler Shift:</span><span id="hud-doppler" class="text-emerald-400">-- kHz</span></div>
+                </div>
+            </div>
+
+            <div class="h-64 bg-slate-950 border-t border-slate-800 p-4 flex gap-4 overflow-x-auto shrink-0">
+                <div class="flex-1 bg-slate-900 border border-slate-800 rounded p-2 min-w-[300px] h-full">
+                    <canvas id="chart-elevation"></canvas>
+                </div>
+                <div class="flex-1 bg-slate-900 border border-slate-800 rounded p-2 min-w-[300px] h-full">
+                    <canvas id="chart-delay"></canvas>
+                </div>
+                <div class="flex-1 bg-slate-900 border border-slate-800 rounded p-2 min-w-[300px] h-full">
+                    <canvas id="chart-doppler"></canvas>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const EARTH_RADIUS = 6371; 
+        const SPEED_OF_LIGHT = 299792.458; 
+
+        const ORBIT_PRESETS = {
+            starlink: { inclination: 53 * Math.PI / 180, altitude: 550, period: 95 * 60 },
+            oneweb: { inclination: 87 * Math.PI / 180, altitude: 1200, period: 109 * 60 },
+            equatorial: { inclination: 0, altitude: 600, period: 96 * 60 }
+        };
+
+        let map, ueFeature, satFeature, orbitFeature, footprintFeature, losFeature, vectorSource;
+        let chartEl, chartDelay, chartDoppler;
+        let activeOrbit = ORBIT_PRESETS.starlink;
+        
+        let simTimeIndex = 0; 
+        let runnerInterval = null; 
+        let precalculatedOrbitCache = []; 
+        let fixedPlaneLonRad = 58.3829 * Math.PI / 180; // Default locked to Muscat center region
+
+        // Pure event driver pipeline initialization
+        window.addEventListener('load', () => {
+            setupDOMControls();
+            initCharts();
+            initMapFramework();
+            
+            // Recalculate baseline and kick engine into live active mode out-of-the-box
+            rebuildOrbitTrackGeometry();
+            startAnimationLoop();
+        });
+
+        function setupDOMControls() {
+            document.getElementById('sat-preset').addEventListener('change', (e) => {
+                activeOrbit = ORBIT_PRESETS[e.target.value];
+                resetTimelineIndex();
+                rebuildOrbitTrackGeometry();
+            });
+
+            document.getElementById('ntn-band').addEventListener('change', () => {
+                rebuildOrbitTrackGeometry();
+            });
+
+            document.getElementById('ue-mask').addEventListener('input', (e) => {
+                document.getElementById('mask-val').innerText = `${e.target.value}°`;
+                renderSingleTimeFrameStep();
+            });
+
+            document.getElementById('btn-play').addEventListener('click', startAnimationLoop);
+            document.getElementById('btn-pause').addEventListener('click', stopAnimationLoop);
+            document.getElementById('btn-reset').addEventListener('click', resetTimelineIndex);
+        }
+
+        function initMapFramework() {
+            const initLon = parseFloat(document.getElementById('ue-lon').value);
+            const initLat = parseFloat(document.getElementById('ue-lat').value);
+            const initialProjCoord = ol.proj.fromLonLat([initLon, initLat]);
+
+            ueFeature = new ol.Feature({ geometry: new ol.geom.Point(initialProjCoord) });
+            satFeature = new ol.Feature({ geometry: new ol.geom.Point(initialProjCoord) });
+            orbitFeature = new ol.Feature();
+            footprintFeature = new ol.Feature();
+            losFeature = new ol.Feature();
+
+            ueFeature.setStyle(new ol.style.Style({
+                image: new ol.style.Circle({ radius: 8, fill: new ol.style.Fill({ color: '#ef4444' }), stroke: new ol.style.Stroke({ color: '#ffffff', width: 2 }) })
+            }));
+            satFeature.setStyle(new ol.style.Style({
+                image: new ol.style.Circle({ radius: 7, fill: new ol.style.Fill({ color: '#38bdf8' }), stroke: new ol.style.Stroke({ color: '#ffffff', width: 1.5 }) })
+            }));
+            orbitFeature.setStyle(new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: '#eab308', width: 3 })
+            }));
+            footprintFeature.setStyle(new ol.style.Style({
+                fill: new ol.style.Fill({ color: 'rgba(56, 189, 248, 0.12)' }),
+                stroke: new ol.style.Stroke({ color: '#38bdf8', width: 1.5 })
+            }));
+            losFeature.setStyle(new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: '#10b981', width: 3, lineDash: [5, 5] })
+            }));
+
+            vectorSource = new ol.source.Vector({ features: [orbitFeature, footprintFeature, losFeature, ueFeature, satFeature] });
+
+            map = new ol.Map({
+                target: 'mapContainer',
+                controls: ol.control.defaults.defaults({ zoom: true, attribution: false }),
+                layers: [
+                    new ol.layer.Tile({ source: new ol.source.OSM() }),
+                    new ol.layer.Vector({ source: vectorSource })
+                ],
+                view: new ol.View({ center: initialProjCoord, zoom: 4 })
+            });
+
+            map.on('singleclick', (evt) => {
+                const coords = ol.proj.toLonLat(evt.coordinate);
+                document.getElementById('ue-lon').value = coords[0].toFixed(4);
+                document.getElementById('ue-lat').value = coords[1].toFixed(4);
+                
+                // Move terminal graphic coordinate layer
+                ueFeature.getGeometry().setCoordinates(evt.coordinate);
+                
+                // Recalculate link parameters cleanly WITHOUT shifting the sky trajectory
+                renderSingleTimeFrameStep(); 
+            });
+        }
+
+        function initCharts() {
+            const chartConfig = (title, label, color) => ({
+                type: 'line',
+                data: { labels: [], datasets: [{ data: [], borderColor: color, borderWidth: 2, pointRadius: 0, fill: false }] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, title: { display: true, text: title, color: '#e2e8f0', font: { size: 12 } } },
+                    scales: {
+                        x: { ticks: { color: '#64748b', maxTicksLimit: 6 }, grid: { color: '#334155' } },
+                        y: { title: { display: true, text: label, color: '#94a3b8' }, ticks: { color: '#64748b' }, grid: { color: '#334155' } }
+                    }
+                }
+            });
+
+            chartEl = new Chart(document.getElementById('chart-elevation'), chartConfig('Elevation Profile (Full Orbit Pass View)', 'Degrees (°)', '#38bdf8'));
+            chartDelay = new Chart(document.getElementById('chart-delay'), chartConfig('One-Way Service Propagation Delay', 'Time (ms)', '#fbbf24'));
+            chartDoppler = new Chart(document.getElementById('chart-doppler'), chartConfig('Doppler Frequency Error Tracking', 'Delta Shift (kHz)', '#34d399'));
+        }
+
+        function startAnimationLoop() {
+            if (runnerInterval) return;
+            runnerInterval = setInterval(renderSingleTimeFrameStep, 1000);
+            document.getElementById('btn-play').classList.add('bg-emerald-700', 'ring-2', 'ring-emerald-400');
+        }
+
+        function stopAnimationLoop() {
+            if (!runnerInterval) return;
+            clearInterval(runnerInterval);
+            runnerInterval = null;
+            document.getElementById('btn-play').classList.remove('bg-emerald-700', 'ring-2', 'ring-emerald-400');
+        }
+
+        function resetTimelineIndex() {
+            simTimeIndex = 0;
+            renderSingleTimeFrameStep();
+        }
+
+        function rebuildOrbitTrackGeometry() {
+            // FIXED LONGITUDE RE-ANCHOR: Syncs the plane node strictly over the active UE coordinate box position at initiation load
+            const currentUelon = parseFloat(document.getElementById('ue-lon').value);
+            fixedPlaneLonRad = currentUelon * Math.PI / 180;
+
+            const totalPeriod = activeOrbit.period;
+            const rSat = EARTH_RADIUS + activeOrbit.altitude;
+
+            precalculatedOrbitCache = [];
+            const orbitCoords = [];
+            const labelsAll = [];
+
+            for (let t = 0; t <= totalPeriod; t += 20) {
+                const meanAnomaly = (2 * Math.PI * t) / totalPeriod;
+                const xOrb = rSat * Math.cos(meanAnomaly);
+                const yOrb = rSat * Math.sin(meanAnomaly);
+
+                let satEcef = {
+                    x: xOrb * Math.cos(activeOrbit.inclination),
+                    y: yOrb,
+                    z: xOrb * Math.sin(activeOrbit.inclination)
+                };
+
+                // Apply stable rotational longitude angle projection properties offsets
+                const angleOffset = fixedPlaneLonRad - (Math.PI / 4) + (meanAnomaly * 0.04); 
+                const rotatedX = satEcef.x * Math.cos(angleOffset) - satEcef.y * Math.sin(angleOffset);
+                const rotatedY = satEcef.x * Math.sin(angleOffset) + satEcef.y * Math.cos(angleOffset);
+                satEcef.x = rotatedX;
+                satEcef.y = rotatedY;
+
+                const satLon = Math.atan2(satEcef.y, satEcef.x) * 180 / Math.PI;
+                const satLat = Math.asin(satEcef.z / rSat) * 180 / Math.PI;
+                orbitCoords.push(ol.proj.fromLonLat([satLon, satLat]));
+
+                precalculatedOrbitCache.push({ t, satEcef, rSat, satLon, satLat });
+                labelsAll.push(`${Math.floor(t/60)}m`);
+            }
+
+            // Draw stable background path
+            orbitFeature.setGeometry(new ol.geom.LineString(orbitCoords));
+            
+            chartEl.data.labels = labelsAll; 
+            chartDelay.data.labels = labelsAll; 
+            chartDoppler.data.labels = labelsAll;
+            
+            renderSingleTimeFrameStep();
+        }
+
+        function renderSingleTimeFrameStep() {
+            if (!precalculatedOrbitCache || precalculatedOrbitCache.length === 0) return;
+
+            if (simTimeIndex >= precalculatedOrbitCache.length) {
+                simTimeIndex = 0; 
+            }
+
+            const frame = precalculatedOrbitCache[simTimeIndex];
+            const ueLat = parseFloat(document.getElementById('ue-lat').value);
+            const ueLon = parseFloat(document.getElementById('ue-lon').value);
+            const maskAngle = parseFloat(document.getElementById('ue-mask').value);
+            const freqHz = parseFloat(document.getElementById('ntn-band').value) * 1e9;
+
+            const latRad = ueLat * Math.PI / 180;
+            const lonRad = ueLon * Math.PI / 180;
+            const ueEcef = {
+                x: EARTH_RADIUS * Math.cos(latRad) * Math.cos(lonRad),
+                y: EARTH_RADIUS * Math.cos(latRad) * Math.sin(lonRad),
+                z: EARTH_RADIUS * Math.sin(latRad)
+            };
+
+            const elCurrentDataSet = [], delayCurrentDataSet = [], dopplerCurrentDataSet = [];
+
+            precalculatedOrbitCache.forEach((node) => {
+                const relX = node.satEcef.x - ueEcef.x;
+                const relY = node.satEcef.y - ueEcef.y;
+                const relZ = node.satEcef.z - ueEcef.z;
+                const slantRange = Math.sqrt(relX*relX + relY*relY + relZ*relZ);
+
+                const dotProduct = (node.satEcef.x * ueEcef.x) + (node.satEcef.y * ueEcef.y) + (node.satEcef.z * ueEcef.z);
+                const elevation = Math.asin((dotProduct - (EARTH_RADIUS * EARTH_RADIUS)) / (EARTH_RADIUS * slantRange)) * 180 / Math.PI;
+                const delay = (slantRange / SPEED_OF_LIGHT) * 1000.0;
+                
+                const meanAnomaly = (2 * Math.PI * node.t) / activeOrbit.period;
+                const satVelocityVec = { x: -7.5 * Math.sin(meanAnomaly), y: 7.5 * Math.cos(meanAnomaly), z: 0 };
+                const rangeRate = ((satVelocityVec.x * relX) + (satVelocityVec.y * relY)) / slantRange;
+                const doppler = -((rangeRate / SPEED_OF_LIGHT) * freqHz) / 1000.0;
+
+                elCurrentDataSet.push(Number(elevation.toFixed(1)));
+                delayCurrentDataSet.push(Number(delay.toFixed(3)));
+                dopplerCurrentDataSet.push(Number(doppler.toFixed(2)));
+            });
+
+            // Re-render chart lines
+            chartEl.data.datasets[0].data = elCurrentDataSet;
+            chartDelay.data.datasets[0].data = delayCurrentDataSet;
+            chartDoppler.data.datasets[0].data = dopplerCurrentDataSet;
+
+            // Apply dynamic visual tracking sweeper red dot
+            const pointRadiusArray = new Array(precalculatedOrbitCache.length).fill(0);
+            pointRadiusArray[simTimeIndex] = 6; 
+            
+            chartEl.data.datasets[0].pointRadius = pointRadiusArray;
+            chartEl.data.datasets[0].pointBackgroundColor = pointRadiusArray.map(r => r ? '#ef4444' : '');
+            chartDelay.data.datasets[0].pointRadius = pointRadiusArray;
+            chartDelay.data.datasets[0].pointBackgroundColor = pointRadiusArray.map(r => r ? '#ef4444' : '');
+            chartDoppler.data.datasets[0].pointRadius = pointRadiusArray;
+            chartDoppler.data.datasets[0].pointBackgroundColor = pointRadiusArray.map(r => r ? '#ef4444' : '');
+
+            chartEl.update('none'); chartDelay.update('none'); chartDoppler.update('none');
+
+            // Draw Spatial map features variables safely
+            const ueCoord = ol.proj.fromLonLat([ueLon, ueLat]);
+            const satCoord = ol.proj.fromLonLat([frame.satLon, frame.satLat]);
+
+            satFeature.getGeometry().setCoordinates(satCoord);
+            losFeature.setGeometry(new ol.geom.LineString([ueCoord, satCoord]));
+
+            const radiusMeters = 6371000 * Math.acos(6371000 / frame.rSat);
+            footprintFeature.setGeometry(ol.geom.Polygon.fromCircle(new ol.geom.Circle(satCoord, radiusMeters)));
+
+            // Force OpenLayers vector layer state modification repaint
+            vectorSource.changed();
+
+            // Sync Header text elements
+            const minutes = Math.floor(frame.t / 60);
+            const seconds = frame.t % 60;
+            document.getElementById('sim-clock').innerText = `${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
+
+            // Process active metrics indicators box structures
+            const currentEl = elCurrentDataSet[simTimeIndex];
+            const currentDelay = delayCurrentDataSet[simTimeIndex];
+            const currentDoppler = dopplerCurrentDataSet[simTimeIndex];
+
+            const isVisible = currentEl >= maskAngle;
+            const hudStatus = document.getElementById('hud-status');
+            hudStatus.innerText = isVisible ? "IN LINE OF SIGHT" : "OUT OF SIGHT / MASKED";
+            hudStatus.className = isVisible ? "font-bold text-emerald-400 animate-pulse" : "font-bold text-rose-500";
+            losFeature.getStyle().getStroke().setColor(isVisible ? '#10b981' : 'rgba(239, 68, 68, 0.25)');
+
+            document.getElementById('hud-el').innerText = `${currentEl.toFixed(2)}°`;
+            document.getElementById('hud-az').innerText = `${(180 + (currentDoppler * -0.5)).toFixed(2)}°`; 
+            document.getElementById('hud-range').innerText = `${(currentDelay * SPEED_OF_LIGHT / 1000).toFixed(2)} km`;
+            document.getElementById('hud-delay').innerText = `${currentDelay.toFixed(3)} ms`;
+            document.getElementById('hud-doppler').innerText = `${currentDoppler.toFixed(2)} kHz`;
+
+            if (runnerInterval) simTimeIndex++; 
+        }
+    </script>
+<footer class="w-full bg-slate-950 border-t border-slate-800 p-3 text-center shrink-0">
+    <div class="text-[11px] text-slate-500 font-sans tracking-wide">
+        &copy; 2026 Developed by <span class="text-sky-500 font-bold">Adeel Khan</span> | 
+        <a href="https://adeel-khan.com" class="hover:text-sky-400 transition" target="_blank">adeel-khan.com</a> | 
+        <a href="https://adeelkhan77.com" class="hover:text-sky-400 transition" target="_blank">adeelkhan77.com</a>
+        <span class="mx-2 text-slate-700">|</span> 
+        <span class="italic text-slate-600">This app is for educational purposes only.</span>
+    </div>
+</footer>
+</body>
+</html>
